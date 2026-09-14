@@ -1,0 +1,15 @@
+[Unit]
+Description=Unload Stable Diffusion checkpoint after 5 minutes idle
+After=stable-diffusion-webui.service
+Requires=stable-diffusion-webui.service
+
+[Service]
+Type=simple
+RuntimeDirectory=sd-vram-watchdog
+RuntimeDirectoryMode=0755
+ExecStart=/usr/local/libexec/sd-vram-watchdog.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

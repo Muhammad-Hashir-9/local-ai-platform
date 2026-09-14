@@ -1,0 +1,14 @@
+[Unit]
+Description=Stable Diffusion auto-reload proxy for Open WebUI
+After=docker.service stable-diffusion-webui.service stable-diffusion-vram-watchdog.service
+Requires=stable-diffusion-webui.service
+Wants=docker.service stable-diffusion-vram-watchdog.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/sd-autoreload-proxy.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

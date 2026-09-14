@@ -1,0 +1,31 @@
+# Local configuration and credentials
+.env
+.env.*
+*.key
+*.pem
+*.token
+secrets/
+
+# AI models and generated/private data
+*.safetensors
+*.ckpt
+*.gguf
+models/
+outputs/
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs and temporary files
+*.log
+*.tmp
+__pycache__/
+*.py[cod]
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
