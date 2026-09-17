@@ -6,7 +6,7 @@
 ![Image Generation](https://img.shields.io/badge/images-AUTOMATIC1111-8A2BE2)
 ![Acceleration](https://img.shields.io/badge/acceleration-NVIDIA%20CUDA-76B900)
 
-A persistent, self-hosted AI platform that runs local language, vision, tool-calling, document, coding, and image-generation workflows on a Windows workstation. The stack runs inside Ubuntu on WSL 2, starts automatically after Windows login, is available to approved devices on the local network, and actively releases GPU memory when image generation becomes idle.
+A persistent, self-hosted AI platform that runs local language, vision, tool-calling, document, coding, and image-generation workflows on a Windows workstation. The stack runs inside Ubuntu on WSL 2, can start before Windows login with a separate post-login fallback, is available to approved devices on the local network, and actively releases GPU memory when image generation becomes idle.
 
 This project focuses on infrastructure and service orchestration. It deliberately avoids publishing model-specific prompts, inference parameters, user data, credentials, or private network details.
 
@@ -48,16 +48,16 @@ The vision-language model recognizes an image request, calls the image-generatio
 - Text-document ingestion and retrieval through Open WebUI
 - Coding, tool-calling, citations, memory, and optional web-search workflows
 - LAN access for trusted devices without exposing the raw Ollama API publicly
-- Silent startup after Windows login without persistent terminal windows
+- Silent pre-login startup with an independent post-login fallback
 - Process supervision using systemd and Docker restart policies
 - A five-minute Stable Diffusion idle watchdog that releases checkpoint VRAM
 - A Docker-private auto-reload proxy that reloads the checkpoint on the next image request
 - Persistent Open WebUI storage for accounts, chats, configuration, and application data
 - Recovery procedures, health checks, backups, and rollback support
 
-## Test system
+## Reference implementation
 
-The deployment was tested on:
+This particular deployment was built and tested on:
 
 | Component | Specification |
 |---|---|
@@ -71,7 +71,7 @@ The deployment was tested on:
 | User interface | Open WebUI `v0.11.1` |
 | Image backend | AUTOMATIC1111 Stable Diffusion WebUI |
 
-The design is not tied to this exact hardware. Available VRAM determines model size, context length, inference parallelism, and whether multiple GPU workloads can run simultaneously.
+These specifications are a reference point, not minimum requirements. Smaller or more heavily quantized models can run on systems with fewer resources, including partial or full CPU offload, while larger models, longer context windows, and greater concurrency may require more VRAM or multiple accelerators. The service architecture remains applicable when the selected models and runtime settings are matched to the available hardware.
 
 ## Architecture
 
@@ -79,7 +79,9 @@ The design is not tied to this exact hardware. Available VRAM determines model s
 flowchart LR
     Users[Host and trusted LAN users]
     FW[Windows and Hyper-V firewall]
-    Task[Windows Task Scheduler]
+    BootTask[Boot task: S4U]
+    LoginTask[Logon task: fallback]
+    PS[PowerShell launcher]
     VBS[Hidden WScript launcher]
 
     subgraph WSL[Ubuntu on WSL 2]
@@ -101,7 +103,8 @@ flowchart LR
     SDProxy -->|reload if idle, then forward| SD
     Docker --> WebUI
     WebUI --> Volume
-    Task --> VBS --> systemd
+    BootTask --> PS --> systemd
+    LoginTask --> VBS --> systemd
     systemd --> Ollama
     systemd --> Docker
     systemd --> SD
@@ -121,27 +124,31 @@ flowchart LR
 
 ## Startup sequence
 
-Windows does not automatically keep WSL alive like a conventional always-on Linux server. This deployment uses two supervision layers:
+Windows does not automatically keep a user WSL distribution alive like a conventional always-on Linux server. This deployment uses two independent Task Scheduler paths plus Linux-side supervision:
 
-1. At Windows user login, Task Scheduler invokes a hidden VBScript launcher.
-2. The launcher starts the required systemd services and Open WebUI container inside Ubuntu.
-3. A harmless long-running sleep process keeps the WSL instance alive.
-4. systemd restarts native WSL services if they fail.
-5. Docker restarts Open WebUI if its process exits or Docker restarts.
+1. The primary task runs at Windows startup through the distribution owner's S4U identity, before interactive login.
+2. A separate task repeats the startup sequence after that user logs in, providing a compatibility fallback.
+3. Both launchers start the required systemd services and Open WebUI container inside Ubuntu.
+4. A harmless long-running sleep process keeps the WSL instance alive.
+5. systemd restarts native WSL services if they fail.
+6. Docker restarts Open WebUI if its process exits or Docker restarts.
 
 ```text
-Windows login
-  -> Task Scheduler
-     -> wscript.exe (hidden)
-        -> wsl.exe
-           -> start Ollama
-           -> start Docker
-           -> start Stable Diffusion
-           -> start Open WebUI container
-           -> keep WSL alive
+Windows boot
+  -> Pre-login Task Scheduler task (S4U, 60-second delay)
+     -> PowerShell -> wsl.exe -> start the stack
+
+Windows user login
+  -> Post-login Task Scheduler task (30-second delay)
+     -> wscript.exe -> wsl.exe -> repeat the idempotent start sequence
+
+Inside WSL
+  -> systemd supervises Ollama, Docker, Stable Diffusion, watchdog, and proxy
+  -> Docker supervises Open WebUI
+  -> a keep-alive process prevents WSL from becoming idle
 ```
 
-This is a **post-login startup**, not a pre-login Windows service. The current task is configured for AC power; laptops should disable the Task Scheduler options that prevent starting on battery if battery startup is required.
+The pre-login task provides service-like availability but is still a scheduled task, not a native Windows service. The post-login method starts network-facing applications only after interactive authentication and is generally the more conservative compatibility choice. Both can remain enabled because the service-start commands are idempotent. See [Windows startup methods](docs/startup-methods.md) for the full comparison, installation steps, acceptance tests, and rollback procedure.
 
 ## Deployment
 
@@ -367,46 +374,24 @@ curl.exe -X POST http://localhost:7860/sdapi/v1/unload-checkpoint
 curl.exe -X POST http://localhost:7860/sdapi/v1/reload-checkpoint
 ```
 
-### 7. Create the hidden Windows launcher
+### 7. Choose a Windows startup method
 
-Save the following as `WSL-AI-Startup.vbs` in a permanent location. Update the distribution name if necessary.
+Two complete patterns are included:
 
-```vbscript
-Option Explicit
+- **Pre-login:** [`Start-WSLAIServices.ps1`](windows/Start-WSLAIServices.ps1) and [`Register-PreLoginTask.ps1`](windows/Register-PreLoginTask.ps1) create a boot-triggered S4U task with logging and retries.
+- **Post-login:** [`WSL-AI-Startup.vbs`](windows/WSL-AI-Startup.vbs) is launched by a conventional interactive logon task.
 
-Dim shell, command
-Set shell = CreateObject("WScript.Shell")
+Use either method independently or keep both enabled so the logon task can recover the stack if a future WSL update disrupts noninteractive startup. Follow [the detailed dual-startup guide](docs/startup-methods.md); it covers identity selection, permanent file placement, security tradeoffs, cold-boot verification, and rollback.
 
-command = "wsl.exe -d <distro> -u root --exec /bin/sh -lc ""set -e; systemctl start ollama docker stable-diffusion-webui stable-diffusion-vram-watchdog stable-diffusion-autoreload-proxy; docker start open-webui >/dev/null 2>&1 || true; exec /bin/sleep infinity"""
-shell.Run command, 0, True
-```
-
-`wscript.exe` keeps the launcher hidden. The final sleep process is intentional—it keeps WSL alive and allows Task Scheduler to represent the lifetime of the stack.
-
-### 8. Register the Windows scheduled task
-
-Create a Task Scheduler task with:
-
-| Setting | Value |
-|---|---|
-| Name | `WSL AI Services Startup` |
-| Trigger | At logon for the intended Windows user |
-| Program | `wscript.exe` |
-| Arguments | `//B //Nologo "C:\path\to\WSL-AI-Startup.vbs"` |
-| Execution time limit | Disabled |
-| Hidden | Enabled |
-
-If startup is required on a laptop while disconnected from power, clear **Start the task only if the computer is on AC power** and **Stop if the computer switches to battery power**.
-
-Inspect or manually operate the task:
+### 8. Verify Task Scheduler state
 
 ```powershell
-schtasks.exe /Query /TN "WSL AI Services Startup" /V /FO LIST
-schtasks.exe /Run /TN "WSL AI Services Startup"
-schtasks.exe /End /TN "WSL AI Services Startup"
+Get-ScheduledTask -TaskName "WSL AI Services Pre-Login Startup"
+Get-ScheduledTask -TaskName "WSL AI Services Startup"
+Get-ScheduledTaskInfo -TaskName "WSL AI Services Pre-Login Startup"
 ```
 
-The task normally remains in the `Running` state because it is keeping the WSL instance alive.
+Both tasks normally remain in the `Running` state after invocation because their launchers keep WSL alive.
 
 ### 9. Restrict LAN access with Windows Firewall
 
@@ -565,11 +550,11 @@ A router DHCP reservation provides a stable LAN address. An IP change affects LA
 
 ### Nothing starts after reboot
 
-1. Log in to the Windows account associated with the scheduled task.
-2. Check whether Task Scheduler blocked startup due to battery policy.
-3. Confirm the VBScript file remains at its registered location.
-4. Start the scheduled task manually.
-5. Inspect systemd units and Docker from WSL.
+1. Inspect `%ProgramData%\WSL-AI\startup.log` and the pre-login task's Last Run Result.
+2. Confirm the PowerShell and VBScript launchers remain at their registered permanent locations.
+3. Confirm both tasks use the Windows account that owns the WSL distribution; do not substitute `SYSTEM` for a normal per-user distribution.
+4. Check whether Task Scheduler blocked either task because of battery policy or an execution time limit.
+5. Log in to activate the fallback task, then inspect systemd units and Docker from WSL.
 
 ## Backup and recovery
 
@@ -602,12 +587,12 @@ For upgrades:
 
 ## Reboot acceptance test
 
-1. Restart Windows.
-2. Log in to the account associated with the scheduled task.
-3. Allow Docker and GPU applications time to initialize.
-4. Open `http://localhost:3000` and `http://localhost:7860`.
-5. Test both interfaces from an approved LAN device.
-6. Run the health checks above.
+1. Restart Windows and remain at the sign-in screen.
+2. Wait for the pre-login delay plus Docker and GPU initialization.
+3. From an approved LAN device, open `http://<host-ip>:3000` and `http://<host-ip>:7860` before anyone logs in.
+4. Sign in and confirm the post-login fallback task also reaches `Running` without duplicating the named services or container.
+5. Inspect `%ProgramData%\WSL-AI\startup.log`, Task Scheduler results, systemd units, and Docker health.
+6. Open `http://localhost:3000` and `http://localhost:7860` on the host.
 7. Generate one chat response and one image.
 8. Confirm the Stable Diffusion checkpoint unloads after five idle minutes.
 
@@ -634,7 +619,12 @@ This implementation demonstrates practical experience with:
 |-- sd-autoreload-proxy.py
 |-- stable-diffusion-vram-watchdog.service
 |-- stable-diffusion-autoreload-proxy.service
+|-- windows/
+|   |-- Start-WSLAIServices.ps1
+|   |-- Register-PreLoginTask.ps1
+|   `-- WSL-AI-Startup.vbs
 `-- docs/
+    |-- startup-methods.md
     `-- images/
         |-- 01-open-webui-chat.png
         |-- 02-image-tool-call.png
@@ -653,6 +643,7 @@ This implementation demonstrates practical experience with:
 - [AUTOMATIC1111 Stable Diffusion WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
 - [Microsoft WSL documentation](https://learn.microsoft.com/windows/wsl/)
 - [Docker Engine documentation](https://docs.docker.com/engine/)
+- [NetworkChuck, "host ALL your AI locally"](https://www.youtube.com/watch?v=Wjrdr0NU4Sk) — an inspiration and practical starting point for the original local-AI setup; this repository extends the idea with WSL lifecycle management, dual startup paths, LAN controls, GPU-memory automation, diagnostics, and rollback procedures.
 
 ## License
 
