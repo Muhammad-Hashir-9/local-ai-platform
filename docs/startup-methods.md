@@ -13,9 +13,15 @@ Both tasks can remain enabled. The pre-login task provides service-like availabi
 
 These are Task Scheduler patterns, not native Windows services. WSL distributions are normally registered per Windows user, so run either task as the Windows account that owns the distribution. Do not switch the pre-login task to `SYSTEM` unless the distribution was deliberately provisioned for that context.
 
-## Shared Linux startup command
+## Shared Linux startup launcher
 
-Both methods ultimately run this command inside the selected WSL distribution:
+The pre-login method calls a single executable path inside WSL, avoiding fragile quoting across Task Scheduler, Windows PowerShell, `wsl.exe`, and the Linux shell. Install the included [`start-ai-services.sh`](../start-ai-services.sh):
+
+```bash
+sudo install -m 0755 start-ai-services.sh /usr/local/sbin/start-ai-services
+```
+
+The launcher contains:
 
 ```bash
 set -e
@@ -35,10 +41,11 @@ Use this when LAN clients must reach the applications after Windows boots, even 
 
 Included files:
 
+- [`start-ai-services.sh`](../start-ai-services.sh): the Linux-side startup and keep-alive sequence installed at `/usr/local/sbin/start-ai-services`.
 - [`Start-WSLAIServices.ps1`](../windows/Start-WSLAIServices.ps1): launches WSL, starts the services, records diagnostics, and keeps WSL alive.
 - [`Register-PreLoginTask.ps1`](../windows/Register-PreLoginTask.ps1): creates the boot-triggered scheduled task.
 
-Copy both files to a permanent local directory. Do not leave the task pointing to a temporary checkout or removable drive. From an elevated PowerShell session in that directory, run:
+Install the Linux launcher first. Then copy both Windows PowerShell files to a permanent local directory. Do not leave the task pointing to a temporary checkout or removable drive. From an elevated PowerShell session in that directory, run:
 
 ```powershell
 .\Register-PreLoginTask.ps1 `

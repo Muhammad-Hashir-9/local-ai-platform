@@ -19,11 +19,11 @@ function Write-StartupLog {
 
 Write-StartupLog "Startup task invoked as $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)."
 
-$linuxCommand = 'set -e; systemctl start ollama docker stable-diffusion-webui stable-diffusion-vram-watchdog stable-diffusion-autoreload-proxy; docker start open-webui >/dev/null 2>&1 || true; echo "systemd service states:"; systemctl is-active ollama docker stable-diffusion-webui stable-diffusion-vram-watchdog stable-diffusion-autoreload-proxy; printf "open-webui="; docker inspect open-webui --format "{{.State.Status}}"; echo "startup checks complete"; exec /bin/sleep infinity'
+$linuxLauncher = "/usr/local/sbin/start-ai-services"
 
 try {
     Write-StartupLog "Launching distribution '$Distribution' and AI services."
-    & $wslPath -d $Distribution -u root --exec /bin/sh -lc $linuxCommand 2>&1 |
+    & $wslPath -d $Distribution -u root --exec $linuxLauncher 2>&1 |
         ForEach-Object { Write-StartupLog $_.ToString() }
 
     $exitCode = $LASTEXITCODE

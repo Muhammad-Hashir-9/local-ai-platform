@@ -378,7 +378,7 @@ curl.exe -X POST http://localhost:7860/sdapi/v1/reload-checkpoint
 
 Two complete patterns are included:
 
-- **Pre-login:** [`Start-WSLAIServices.ps1`](windows/Start-WSLAIServices.ps1) and [`Register-PreLoginTask.ps1`](windows/Register-PreLoginTask.ps1) create a boot-triggered S4U task with logging and retries.
+- **Pre-login:** [`start-ai-services.sh`](start-ai-services.sh), [`Start-WSLAIServices.ps1`](windows/Start-WSLAIServices.ps1), and [`Register-PreLoginTask.ps1`](windows/Register-PreLoginTask.ps1) create a boot-triggered S4U path with reliable cross-shell execution, logging, and retries.
 - **Post-login:** [`WSL-AI-Startup.vbs`](windows/WSL-AI-Startup.vbs) is launched by a conventional interactive logon task.
 
 Use either method independently or keep both enabled so the logon task can recover the stack if a future WSL update disrupts noninteractive startup. Follow [the detailed dual-startup guide](docs/startup-methods.md); it covers identity selection, permanent file placement, security tradeoffs, cold-boot verification, and rollback.
@@ -619,6 +619,7 @@ This implementation demonstrates practical experience with:
 |-- sd-autoreload-proxy.py
 |-- stable-diffusion-vram-watchdog.service
 |-- stable-diffusion-autoreload-proxy.service
+|-- start-ai-services.sh
 |-- windows/
 |   |-- Start-WSLAIServices.ps1
 |   |-- Register-PreLoginTask.ps1
