@@ -6,7 +6,7 @@
 ![Image Generation](https://img.shields.io/badge/images-AUTOMATIC1111-8A2BE2)
 ![Acceleration](https://img.shields.io/badge/acceleration-NVIDIA%20CUDA-76B900)
 
-A persistent, self-hosted AI platform that runs local language, vision, tool-calling, document, audio-transcription, coding, and image-generation workflows on a Windows workstation. The stack runs inside Ubuntu on WSL 2, starts automatically after Windows login, is available to approved devices on the local network, and actively releases GPU memory when image generation becomes idle.
+A persistent, self-hosted AI platform that runs local language, vision, tool-calling, document, coding, and image-generation workflows on a Windows workstation. The stack runs inside Ubuntu on WSL 2, starts automatically after Windows login, is available to approved devices on the local network, and actively releases GPU memory when image generation becomes idle.
 
 This project focuses on infrastructure and service orchestration. It deliberately avoids publishing model-specific prompts, inference parameters, user data, credentials, or private network details.
 
@@ -46,7 +46,6 @@ The vision-language model recognizes an image request, calls the image-generatio
 - Local LLM and vision inference through Ollama with NVIDIA GPU acceleration
 - AUTOMATIC1111 Stable Diffusion image generation exposed to Open WebUI as a callable tool
 - Text-document ingestion and retrieval through Open WebUI
-- Audio transcription followed by LLM analysis
 - Coding, tool-calling, citations, memory, and optional web-search workflows
 - LAN access for trusted devices without exposing the raw Ollama API publicly
 - Silent startup after Windows login without persistent terminal windows
@@ -611,36 +610,6 @@ For upgrades:
 6. Run the health checks above.
 7. Generate one chat response and one image.
 8. Confirm the Stable Diffusion checkpoint unloads after five idle minutes.
-
-## Screenshots
-
-The repository includes seven publication-ready screenshots covering the user experience, LAN access, service health, automatic startup, and GPU-memory behavior.
-
-| Filename | Status | What it demonstrates |
-|---|---|---|
-| `01-open-webui-chat.png` | Included | Local coding response with an interactive preview |
-| `02-image-tool-call.png` | Included | LLM invoking Stable Diffusion and returning an image |
-| `03-lan-mobile-access.jpg` | Included | Open WebUI accessed from another device on the LAN |
-| `04-services-healthy.png` | Included | Five systemd units active and Open WebUI healthy |
-| `05-automatic-startup.png` | Included | Task Scheduler entry enabled and running |
-| `06-vram-idle.png` | Included | GPU memory state while AI models are idle |
-| `07-vram-llm-loaded.png` | Included | GPU memory state with the local LLM loaded |
-
-Optional screenshots:
-
-- `08-stable-diffusion-ui.png`: AUTOMATIC1111 producing a representative image
-- `09-document-analysis.png`: Open WebUI answering a question from a non-sensitive sample document
-- `10-audio-transcription.png`: A public-domain audio sample being transcribed and analyzed
-- `11-reboot-verification.png`: Health checks immediately after reboot and login
-
-Before publishing any screenshot, check for:
-
-- Real names and profile pictures
-- Email addresses and authentication tokens
-- Hostnames, usernames, and absolute home-directory paths
-- Private IP addresses, Wi-Fi names, and router details
-- Chat content, document names, or generated data belonging to others
-- Container IDs, model file paths, or logs that reveal internal structure unnecessarily
 
 ## Project outcomes
 
